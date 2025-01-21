@@ -8,7 +8,12 @@ Briefly is an effective way to transcribe and summarize your meetings, to create
 <hr>
 
 Create a virtual enviroment for Python
-```bash
-python3 -m venv venv/venv
+```shell
+python3 -m venv venv/briefly
 ```
+Check if CUDA is working (for GPU Acceleration)
+```shell
+python3 -c "import torch; print(torch.cuda.is_available())"
+```
+
 
