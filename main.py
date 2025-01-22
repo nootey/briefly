@@ -2,6 +2,8 @@ import json
 import os
 import sys
 
+import ollama
+import torch
 import whisper
 from src import transcribe as t
 from src import summarize as s
@@ -18,7 +20,14 @@ def print_welcome_message():
     print("#" + " " * width + "#")
     print("#" * (width + 2))
 
-def main():
+def test_ollama():
+    """Test if Ollama and Phi-3 model are working."""
+    try:
+        response = ollama.chat(model='phi3', messages=[{'role': 'user', 'content': 'Say Hello, like president Trump would say'}])
+        print("Ollama healthcheck:", response['message']['content'])
+    except Exception as e:
+        print("Ollama Error:", e)
+
 def test_cuda():
     """Check if CUDA is available for PyTorch."""
     cuda_available = torch.cuda.is_available()
@@ -30,11 +39,14 @@ def test_cuda():
     else:
         print("CUDA not found. Make sure NVIDIA drivers and CUDA Toolkit are installed.")
 
-    print_welcome_message()
+def test_whisper():
+    """Check if OpenAI's Whisper is installed and working."""
+    try:
+        model = whisper.load_model("tiny")  # Load a small model to check functionality
+        print("Whisper Model Loaded Successfully!")
+    except Exception as e:
+        print("Whisper Error:", e)
 
-    audio_file = "meeting_example_short"
-    audio_file_extension = "mp3"
-    audio_file_path = f"data/{audio_file}.{audio_file_extension}"
 def run_dependency_tests():
     """Run all tests for Ollama, CUDA, and Whisper."""
     # test_ollama()
@@ -52,7 +64,6 @@ def transcribe_audio(file):
         print(f"File not found: {audio_file_path}")
         sys.exit()
 
-    model_name = "small"
     model_name = "large"
     print(f"Loading model: {model_name}")
     model = whisper.load_model(model_name)
@@ -61,7 +72,6 @@ def transcribe_audio(file):
     result = model.transcribe(audio_file_path)
 
     print("Saving transcription ...")
-    t.save_transcription(result["text"], audio_file)
     t.save_transcription(result["text"], file)
 
     print("Audio transcription complete.")

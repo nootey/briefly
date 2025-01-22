@@ -16,4 +16,10 @@ Check if CUDA is working (for GPU Acceleration)
 python3 -c "import torch; print(torch.cuda.is_available())"
 ```
 
+Install Ollama for WSL:
+```shell
+curl -fsSL https://ollama.com/install.sh | sh
+```
+Verify installation:
+`ollama --version`
 
