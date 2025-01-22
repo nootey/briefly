@@ -23,3 +23,7 @@ curl -fsSL https://ollama.com/install.sh | sh
 Verify installation:
 `ollama --version`
 
+In order to use the models, you need to pull them with `ollama pull <name>`. 
+
+For now, I'll be using mistral.
+
