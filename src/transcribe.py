@@ -24,13 +24,22 @@ def prepare_audio_file(audio_file):
     return audio_file
 
 def extract_mp3(mp4_file, mp3_file):
+    """
+    Whisper tends to perform better with MP3 files in some cases, compared to WAV, because they are trained on real-world, often compressed, noisy audio data.
+    MP3 compression may sometimes remove background noise and artifacts, making speech more distinct.
+    """
     if not os.path.exists(mp4_file):
         print(f"Error: {mp4_file} does not exist.")
         return
 
     print(f"Extracting audio from {mp4_file} to {mp3_file}...")
+
+    # Load the MP4 file
     audio = AudioSegment.from_file(mp4_file, format="mp4")
-    audio.export(mp3_file, format="mp3")
+
+    # Export with highest quality MP3 settings
+    audio.export(mp3_file, format="mp3", bitrate="320k")
+
     return mp3_file
 
 def split_into_paragraphs(text, char_limit=300):
