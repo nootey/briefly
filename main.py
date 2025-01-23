@@ -7,7 +7,9 @@ import torch
 import whisper
 from src import transcribe as t
 from src import summarize as s
+from openai import OpenAI
 
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def print_welcome_message():
     message = "Welcome to Briefly!"
@@ -54,6 +56,21 @@ def run_dependency_tests():
     # test_whisper()
 
 
+# define a wrapper function for seeing how prompts affect transcriptions
+def transcribe_with_spellcheck(model, audio_file_path, initial_prompt, system_prompt):
+    completion = client.chat.completions.create(
+        model="gpt-4",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": model.transcribe(audio_file_path, prompt=""),
+            },
+        ],
+    )
+    return completion.choices[0].message.content
+
 def transcribe_audio(file):
     audio_file_path = t.prepare_audio_file(file)
 
@@ -64,15 +81,21 @@ def transcribe_audio(file):
         print(f"File not found: {audio_file_path}")
         sys.exit()
 
-    model_name = "large"
+    model_name = "large-v3"
     print(f"Loading model: {model_name}")
     model = whisper.load_model(model_name)
 
+    # This has a token limit of 244
+    initial_prompt = "Lan-Xi, Human Vibration, Bruel & Kjar"
+    system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
+
     print("Transcribing audio ...")
-    result = model.transcribe(audio_file_path)
+    # result = model.transcribe(audio_file_path, initial_prompt=initial_prompt)
+    result = transcribe_with_spellcheck(model, audio_file_path, initial_prompt, system_prompt)
 
     print("Saving transcription ...")
-    t.save_transcription(result["text"], file)
+    # t.save_transcription(result["text"], file)
+    t.save_transcription(result, file)
 
     print("Audio transcription complete.")
 def main():
