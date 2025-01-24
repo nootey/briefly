@@ -102,7 +102,7 @@ def extract_notes_per_chunk(chunks, model):
 
 def create_transcription_summary(transcript, audio_file):
 
-    model = "mistral"
+    model = "command-r-plus"
     # result = extract_notes(transcript, model)
     # save_file_as_md(result, audio_file+"_"+model)
 

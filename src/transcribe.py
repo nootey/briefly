@@ -21,7 +21,7 @@ def prepare_audio_file(audio_file):
     if audio_file_extension == "mp4":
         audio_file = extract_mp3(audio_file_path, mp3_dir)
 
-    return audio_file
+    return mp3_dir
 
 def extract_mp3(mp4_file, mp3_file):
     """

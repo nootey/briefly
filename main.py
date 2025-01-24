@@ -1,15 +1,23 @@
 import json
 import os
 import sys
-
 import ollama
 import torch
 import whisper
+from tqdm import tqdm
+
 from src import transcribe as t
 from src import summarize as s
 from openai import OpenAI
+from dotenv import load_dotenv
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+load_dotenv()
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    raise ValueError("OPENAI_API_KEY is not set in the environment")
+
+# Initialize OpenAI client
+client = OpenAI(api_key=api_key)
 
 def print_welcome_message():
     message = "Welcome to Briefly!"
@@ -49,37 +57,57 @@ def test_whisper():
     except Exception as e:
         print("Whisper Error:", e)
 
+def check_available_openai_models():
+    """
+    Displays all available OpenAI models for the given API key.
+    """
+    models = client.models.list()
+    for model in models:
+        print(model.id)
+
 def run_dependency_tests():
     """Run all tests for Ollama, CUDA, and Whisper."""
-    # test_ollama()
     test_cuda()
+    # check_available_openai_models()
     # test_whisper()
+    # test_ollama()
 
 
 # define a wrapper function for seeing how prompts affect transcriptions
-def transcribe_with_spellcheck(model, audio_file_path, initial_prompt, system_prompt):
+def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
+
+    # Step 1: Transcription
+    # Check if file exists
+    json_file_path = f"results/transcriptions/{file}.json"
+    transcribed_text = ""
+    print("     --> Transcribing audio...")
+
+    if os.path.exists(json_file_path):
+        print(f"Selected file: {file} exists, proceeding ...")
+        with open(json_file_path, "r", encoding="utf-8") as jf:
+            transcription_result = json.load(jf)
+        transcribed_text = transcription_result["transcription"]
+    else:
+        transcription_result = model.transcribe(audio_file_path, prompt=initial_prompt)
+        transcribed_text = transcription_result["text"]
+        t.save_transcription(transcribed_text, file)
+
+    # Step 2: Spellchecking with GPT-4
+    print("     --> Refining transcript ...")
     completion = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         temperature=0,
         messages=[
             {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": model.transcribe(audio_file_path, prompt=""),
-            },
+            {"role": "user", "content": transcribed_text},
         ],
     )
+
     return completion.choices[0].message.content
 
-def transcribe_audio(file):
-    audio_file_path = t.prepare_audio_file(file)
+def transcribe_audio(file, audio_file_path):
 
-    # Check if file exists
-    if os.path.exists(audio_file_path):
-        print(f"Selected file: {audio_file_path} exists, proceeding ...")
-    else:
-        print(f"File not found: {audio_file_path}")
-        sys.exit()
+    # audio_file_path = t.prepare_audio_file(file)
 
     model_name = "large-v3"
     print(f"Loading model: {model_name}")
@@ -89,9 +117,9 @@ def transcribe_audio(file):
     initial_prompt = "Lan-Xi, Human Vibration, Bruel & Kjar"
     system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
 
-    print("Transcribing audio ...")
+    print("Starting transcription: ")
     # result = model.transcribe(audio_file_path, initial_prompt=initial_prompt)
-    result = transcribe_with_spellcheck(model, audio_file_path, initial_prompt, system_prompt)
+    result = transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt)
 
     print("Saving transcription ...")
     # t.save_transcription(result["text"], file)
@@ -109,21 +137,28 @@ def main():
     print("All dependencies are present, proceeding ...")
     print("\n")
 
-    audio_file = "ims_meeting"
-    json_file_path = f"results/transcriptions/{audio_file}.json"
+    file_name = "ims_meeting"
+    json_file_path = f"results/transcriptions/{file_name}.json"
 
-    # Check if transcription already exists
-    if not os.path.exists(json_file_path):
-        transcribe_audio(audio_file)
+    # Prepare the audio file
+    audio_file_path = t.prepare_audio_file(file_name)
+
+    # # Create or load transcript
+    # if not os.path.exists(json_file_path):
+    #     transcribe_audio(file_name)
+
+
+    transcribe_audio(file_name, audio_file_path)
 
     with open(json_file_path, "r", encoding="utf-8") as jf:
         transcription_data = json.load(jf)
 
     transcription = transcription_data.get("transcription", "")
 
-    print(f"Transcription [{audio_file}] selected")
+    print(f"Transcription [{file_name}] selected")
 
-    s.create_transcription_summary(transcription, audio_file)
+    # Summarize the transcript
+    s.create_transcription_summary(transcription, file_name)
 
 if __name__ == "__main__":
     main()
