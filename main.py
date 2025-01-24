@@ -30,11 +30,19 @@ def print_welcome_message():
     print("#" + " " * width + "#")
     print("#" * (width + 2))
 
+
 def test_ollama():
-    """Test if Ollama and Phi-3 model are working."""
+    """Test if Ollama is running and list available models."""
     try:
-        response = ollama.chat(model='phi3', messages=[{'role': 'user', 'content': 'Say Hello, like president Trump would say'}])
-        print("Ollama healthcheck:", response['message']['content'])
+
+        # Get the list of available models
+        response = ollama.list()
+
+        # Print the list of models
+        print("Ollama is running. Available models:")
+        for model in response['models']:
+            print(f"- {model}")
+
     except Exception as e:
         print("Ollama Error:", e)
 
