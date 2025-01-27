@@ -37,7 +37,7 @@ def extract_mp3(mp4_file, mp3_file):
     # Load the MP4 file
     audio = AudioSegment.from_file(mp4_file, format="mp4")
 
-    # Export with highest quality MP3 settings
+    # Export with the highest quality MP3 settings
     audio.export(mp3_file, format="mp3", bitrate="320k")
 
     return mp3_file
@@ -66,11 +66,11 @@ def save_transcription(text, filename):
     """
     json_file_path = f"results/transcriptions/{filename}.json"
 
-    # Ensure unique filename if file already exists
-    index = 1
-    while os.path.exists(json_file_path):
-        json_file_path = f"results/transcriptions/{filename}_{index}.json"
-        index += 1
+    # # Ensure unique filename if file already exists
+    # index = 1
+    # while os.path.exists(json_file_path):
+    #     json_file_path = f"results/transcriptions/{filename}_{index}.json"
+    #     index += 1
 
     # Structure JSON data
     paragraphs = split_into_paragraphs(text, char_limit=300)

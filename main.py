@@ -85,20 +85,12 @@ def run_dependency_tests():
 def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
 
     # Step 1: Transcription
-    # Check if file exists
-    json_file_path = f"results/transcriptions/{file}.json"
     transcribed_text = ""
     print("     --> Transcribing audio...")
 
-    if os.path.exists(json_file_path):
-        print(f"Selected file: {file} exists, proceeding ...")
-        with open(json_file_path, "r", encoding="utf-8") as jf:
-            transcription_result = json.load(jf)
-        transcribed_text = transcription_result["transcription"]
-    else:
-        transcription_result = model.transcribe(audio_file_path, prompt=initial_prompt)
-        transcribed_text = transcription_result["text"]
-        t.save_transcription(transcribed_text, file)
+    transcription_result = model.transcribe(audio_file_path, prompt=initial_prompt)
+    transcribed_text = transcription_result["text"]
+    t.save_transcription(transcribed_text, file)
 
     # Step 2: Spellchecking with GPT-4
     print("     --> Refining transcript ...")
@@ -118,7 +110,7 @@ def transcribe_audio(file, audio_file_path):
     # audio_file_path = t.prepare_audio_file(file)
 
     model_name = "large-v3"
-    print(f"Loading model: {model_name}")
+    print(f"Loading transcription model: {model_name}")
     model = whisper.load_model(model_name)
 
     # This has a token limit of 244
@@ -151,12 +143,9 @@ def main():
     # Prepare the audio file
     audio_file_path = t.prepare_audio_file(file_name)
 
-    # # Create or load transcript
-    # if not os.path.exists(json_file_path):
-    #     transcribe_audio(file_name)
-
-
-    transcribe_audio(file_name, audio_file_path)
+    # Create or load transcript
+    if not os.path.exists(json_file_path):
+        transcribe_audio(file_name, audio_file_path)
 
     with open(json_file_path, "r", encoding="utf-8") as jf:
         transcription_data = json.load(jf)
