@@ -7,6 +7,8 @@ from pydub import AudioSegment
 def prepare_audio_file(audio_file):
     directory = "data"
     mp3_dir = os.path.join(directory, audio_file+".mp3")
+    if os.path.exists(mp3_dir):
+        return mp3_dir
 
     # Find the file with any extension
     for file in os.listdir(directory):

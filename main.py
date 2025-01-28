@@ -20,6 +20,7 @@ if not api_key:
 client = OpenAI(api_key=api_key)
 
 def print_welcome_message():
+    print("\n")
     message = "Welcome to Briefly!"
     padding = 2
     width = len(message) + padding * 2
@@ -29,6 +30,7 @@ def print_welcome_message():
     print("#" + " " * padding + message + " " * padding + "#")
     print("#" + " " * width + "#")
     print("#" * (width + 2))
+    print("\n")
 
 
 def test_ollama():
@@ -128,14 +130,11 @@ def transcribe_audio(file, audio_file_path):
     print("Audio transcription complete.")
 def main():
 
-    print("\n")
     print_welcome_message()
-    print("\n")
 
     print("Checking for required dependencies...")
     run_dependency_tests()
     print("All dependencies are present, proceeding ...")
-    print("\n")
 
     file_name = "ims_meeting"
     json_file_path = f"results/transcriptions/{file_name}.json"
@@ -143,16 +142,20 @@ def main():
     # Prepare the audio file
     audio_file_path = t.prepare_audio_file(file_name)
 
+    print("\nStarting transcription.")
     # Create or load transcript
     if not os.path.exists(json_file_path):
+        print(f"Transcript {file_name}.json not found, generating ...")
         transcribe_audio(file_name, audio_file_path)
+    else:
+        print(f"Transcript {file_name}.json found, proceeding ...")
 
     with open(json_file_path, "r", encoding="utf-8") as jf:
         transcription_data = json.load(jf)
 
     transcription = transcription_data.get("transcription", "")
 
-    print(f"Transcription [{file_name}] selected")
+    print(f"Transcription [{file_name}.json] selected")
 
     # Summarize the transcript
     s.create_transcription_summary(transcription, file_name)
