@@ -107,7 +107,7 @@ def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, sys
 
     return completion.choices[0].message.content
 
-def transcribe_audio(file, audio_file_path):
+def transcribe_audio(file, audio_file_path, initial_prompt):
 
     # audio_file_path = t.prepare_audio_file(file)
 
@@ -115,8 +115,6 @@ def transcribe_audio(file, audio_file_path):
     print(f"Loading transcription model: {model_name}")
     model = whisper.load_model(model_name)
 
-    # This has a token limit of 244
-    initial_prompt = "Lan-Xi, Human Vibration, Bruel & Kjar"
     system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
 
     print("Starting transcription: ")
@@ -128,6 +126,38 @@ def transcribe_audio(file, audio_file_path):
     t.save_transcription(result, file)
 
     print("Audio transcription complete.")
+
+def get_initial_terms_from_user():
+
+    # TEMP - hard code some values for the meeting used in testing
+    return "Lan-Xi, Human Vibration, Bruel & Kjar"
+
+    char_limit = 183  # Approximate character limit for Whisper input
+    initial_prompt = []
+    print("\nEnter any potential business terms, that might help with transcription")
+    print("You can also skip this, just press enter.")
+
+    while True:
+        user_input = input("Input terms: ").strip()
+        if not user_input:
+            break
+
+        initial_prompt = [word.strip() for word in user_input.split(",")]
+
+        if len(initial_prompt) < 1 or len(initial_prompt) > 7:
+            print("Info: Please enter between 1 and 7 terms.")
+            continue
+
+        total_chars = sum(len(word) for word in initial_prompt)
+        if total_chars > char_limit:
+            print(f"Error: Total character length ({total_chars}) exceeds the {char_limit}-character limit. Please try again.")
+            continue  # Ask for input again
+
+        break
+
+    # Print the resulting array
+    print("User has provided the following terms:", initial_prompt)
+    return ", ".join(initial_prompt)
 def main():
 
     print_welcome_message()
@@ -135,6 +165,8 @@ def main():
     print("Checking for required dependencies...")
     run_dependency_tests()
     print("All dependencies are present, proceeding ...")
+
+    initial_prompt = get_initial_terms_from_user()
 
     file_name = "ims_meeting"
     json_file_path = f"results/transcriptions/{file_name}.json"
@@ -146,7 +178,7 @@ def main():
     # Create or load transcript
     if not os.path.exists(json_file_path):
         print(f"Transcript {file_name}.json not found, generating ...")
-        transcribe_audio(file_name, audio_file_path)
+        transcribe_audio(file_name, audio_file_path, initial_prompt)
     else:
         print(f"Transcript {file_name}.json found, proceeding ...")
 
