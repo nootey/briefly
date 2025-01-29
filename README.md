@@ -27,3 +27,14 @@ In order to use the models, you need to pull them with `ollama pull <name>`.
 
 For now, I'll be using mistral.
 
+
+In order to use the pipeline to diarize speakers with whisper, you need 
+Install pyannote.audio with pip install pyannote.audio
+Accept pyannote/segmentation-3.0 user conditions
+https://hf.co/pyannote/segmentation-3.0
+
+Accept pyannote/speaker-diarization-3.1 user conditions
+https://hf.co/pyannote/speaker-diarization-3.1
+
+Create access token at hf.co/settings/tokens.
+

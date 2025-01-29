@@ -10,14 +10,22 @@ from src import transcribe as t
 from src import summarize as s
 from openai import OpenAI
 from dotenv import load_dotenv
+from pyannote.audio.pipelines import SpeakerDiarization
+from pyannote.core import Segment
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
     raise ValueError("OPENAI_API_KEY is not set in the environment")
 
+hug_token = os.getenv("HUGGINGFACE_TOKEN")
+if not hug_token:
+    raise ValueError("HUGGINGFACE_TOKEN is not set in the environment")
+
 # Initialize OpenAI client
 client = OpenAI(api_key=api_key)
+
+
 
 def print_welcome_message():
     print("\n")
@@ -31,7 +39,6 @@ def print_welcome_message():
     print("#" + " " * width + "#")
     print("#" * (width + 2))
     print("\n")
-
 
 def test_ollama():
     """Test if Ollama is running and list available models."""
@@ -82,51 +89,6 @@ def run_dependency_tests():
     # test_whisper()
     # test_ollama()
 
-
-# define a wrapper function for seeing how prompts affect transcriptions
-def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
-
-    # Step 1: Transcription
-    transcribed_text = ""
-    print("     --> Transcribing audio...")
-
-    transcription_result = model.transcribe(audio_file_path, prompt=initial_prompt)
-    transcribed_text = transcription_result["text"]
-    t.save_transcription(transcribed_text, file)
-
-    # Step 2: Spellchecking with GPT-4
-    print("     --> Refining transcript ...")
-    completion = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": transcribed_text},
-        ],
-    )
-
-    return completion.choices[0].message.content
-
-def transcribe_audio(file, audio_file_path, initial_prompt):
-
-    # audio_file_path = t.prepare_audio_file(file)
-
-    model_name = "large-v3"
-    print(f"Loading transcription model: {model_name}")
-    model = whisper.load_model(model_name)
-
-    system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
-
-    print("Starting transcription: ")
-    # result = model.transcribe(audio_file_path, initial_prompt=initial_prompt)
-    result = transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt)
-
-    print("Saving transcription ...")
-    # t.save_transcription(result["text"], file)
-    t.save_transcription(result, file)
-
-    print("Audio transcription complete.")
-
 def get_initial_terms_from_user():
 
     # TEMP - hard code some values for the meeting used in testing
@@ -158,6 +120,129 @@ def get_initial_terms_from_user():
     # Print the resulting array
     print("User has provided the following terms:", initial_prompt)
     return ", ".join(initial_prompt)
+
+def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
+    """
+    Transcribes audio using Whisper and refines it using GPT-4 spellcheck.
+    Returns timestamped transcription.
+    """
+
+    print("     --> Transcribing audio...")
+    transcription_result = model.transcribe(audio_file_path, prompt=initial_prompt, word_timestamps=True)
+
+    print("     --> Refining transcript with GPT-4 spellcheck...")
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": transcription_result["text"]},
+        ],
+    )
+
+    # return completion.choices[0].message.content
+    # Return corrected transcription along with timestamps
+    return {"corrected_text": completion.choices[0].message.content, "segments": transcription_result["segments"]}
+
+def transcribe_audio(file, audio_file_path, initial_prompt):
+
+    # audio_file_path = t.prepare_audio_file(file)
+
+    model_name = "large-v3"
+    print(f"Loading transcription model: {model_name}")
+    model = whisper.load_model(model_name)
+
+    system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
+
+    print("Starting transcription: ")
+    # result = model.transcribe(audio_file_path, initial_prompt=initial_prompt)
+    transcription_result = transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt)
+
+    print("Applying speaker diarization...")
+    speaker_segments = diarize_speakers(audio_file_path)
+
+    print("Aligning transcription with speaker segments...")
+    aligned_transcription = align_transcription_with_speakers(transcription_result, speaker_segments)
+
+    print("Saving transcription ...")
+    # t.save_transcription(transcription_result, file)
+    formatted_transcription = "\n".join(f"{seg['speaker']}: {seg['text'].strip()}" for seg in aligned_transcription)
+    t.save_transcription(formatted_transcription, file)
+
+    speaker_segments = diarize_speakers(audio_file_path)
+
+    aligned_transcription = align_transcription_with_speakers(transcription_result, speaker_segments)
+
+    print("Saving final transcription ...")
+    formatted_transcription = "\n".join(f"{seg['speaker']}: {seg['text'].strip()}" for seg in aligned_transcription)
+
+    final_transcription_file = f"{file}_final_transcription.txt"
+    with open(final_transcription_file, "w", encoding="utf-8") as f:
+        f.write(formatted_transcription)
+
+    print("Audio transcription complete.")
+
+def diarize_speakers(audio_file):
+    """
+    Applies speaker diarization using Pyannote and returns speaker segments.
+    """
+
+    if not hug_token:
+        raise ValueError("Hugging Face token not found. Add it to your .env file.")
+
+    print("     --> Loading pyannote library ...")
+    # Load pre-trained diarization pipeline
+    pipeline = SpeakerDiarization.from_pretrained(
+        "pyannote/speaker-diarization", use_auth_token=hug_token
+    )
+
+    # Run diarization on audio file
+    print("     --> Running pyannote library ...")
+    diarization = pipeline(audio_file)
+
+    # Store speaker labels and timestamps
+    speaker_segments = []
+    print("     --> Organizing speaker segments ...")
+    for segment, _, speaker in diarization.itertracks(yield_label=True):
+        speaker_segments.append({
+            "speaker": speaker,
+            "start": segment.start,
+            "end": segment.end
+        })
+
+    return speaker_segments
+
+def align_transcription_with_speakers(transcription_result, speaker_segments):
+    """
+    Aligns transcribed text with speaker diarization timestamps.
+    """
+
+    aligned_transcription = []
+    speaker_index = 0
+    current_speaker = speaker_segments[speaker_index]
+
+    temp_segment = {"speaker": current_speaker["speaker"], "text": ""}
+
+    for word_data in transcription_result["segments"]:
+        start_time = word_data["start"]
+        end_time = word_data["end"]
+        text = word_data["text"]
+
+        # Move to the correct speaker segment
+        while speaker_index < len(speaker_segments) - 1 and start_time >= speaker_segments[speaker_index + 1]["start"]:
+            aligned_transcription.append(temp_segment)
+            speaker_index += 1
+            current_speaker = speaker_segments[speaker_index]
+            temp_segment = {"speaker": current_speaker["speaker"], "text": ""}
+
+        # Append text to the current speaker segment
+        temp_segment["text"] += " " + text
+
+    # Append the last segment
+    aligned_transcription.append(temp_segment)
+
+    return aligned_transcription
+
 def main():
 
     print_welcome_message()
@@ -181,6 +266,8 @@ def main():
         transcribe_audio(file_name, audio_file_path, initial_prompt)
     else:
         print(f"Transcript {file_name}.json found, proceeding ...")
+
+    sys.exit()
 
     with open(json_file_path, "r", encoding="utf-8") as jf:
         transcription_data = json.load(jf)
