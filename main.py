@@ -4,14 +4,11 @@ import sys
 import ollama
 import torch
 import whisper
-from tqdm import tqdm
-
+import whisperx
 from src import transcribe as t
 from src import summarize as s
 from openai import OpenAI
 from dotenv import load_dotenv
-from pyannote.audio.pipelines import SpeakerDiarization
-from pyannote.core import Segment
 
 load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
@@ -25,6 +22,10 @@ if not hug_token:
 # Initialize OpenAI client
 client = OpenAI(api_key=api_key)
 
+# ReproducibilityWarning: TensorFloat-32 (TF32) has been disabled as it might lead to reproducibility issues and lower accuracy.
+# It can be re-enabled by calling
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 
 def print_welcome_message():
@@ -148,98 +149,103 @@ def transcribe_audio(file, audio_file_path, initial_prompt):
 
     # audio_file_path = t.prepare_audio_file(file)
 
-    model_name = "large-v3"
-    print(f"Loading transcription model: {model_name}")
-    model = whisper.load_model(model_name)
 
-    system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
+    batch_size = 16
+    compute_type = "float16"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # print(f"Loading transcription model: {model_name}")
+    # model = whisper.load_model(model_name)
+
+    print("Loading WhisperX model...")
+    model = whisperx.load_model("large-v3", device=device, compute_type=compute_type)
 
     print("Starting transcription: ")
     # result = model.transcribe(audio_file_path, initial_prompt=initial_prompt)
-    transcription_result = transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt)
+    # transcription_result = transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt)
+    audio = whisperx.load_audio(audio_file_path)
+    transcription_result = model.transcribe(audio_file_path, batch_size=batch_size)
+
+    segments = transcription_result.get("segments")
+
+    # 2. Align whisper output
+    model_a, metadata = whisperx.load_align_model(language_code=transcription_result.get("language"), device=device)
+    transcription_result = whisperx.align(transcription_result.get("segments"), model_a, metadata, audio, device, return_char_alignments=False)
+
+
 
     print("Applying speaker diarization...")
-    speaker_segments = diarize_speakers(audio_file_path)
+    diarization_model = whisperx.DiarizationPipeline(use_auth_token=hug_token, device=device)
+    diarize_segments = diarization_model(audio_file_path)
+    #
+    # print("Aligning transcription with speaker labels...")
+    # aligned_transcription = align_transcription_with_speakers(segments, diarization_result)
 
-    print("Aligning transcription with speaker segments...")
-    aligned_transcription = align_transcription_with_speakers(transcription_result, speaker_segments)
+    result = whisperx.assign_word_speakers(diarize_segments, transcription_result)
 
-    print("Saving transcription ...")
-    # t.save_transcription(transcription_result, file)
-    formatted_transcription = "\n".join(f"{seg['speaker']}: {seg['text'].strip()}" for seg in aligned_transcription)
-    t.save_transcription(formatted_transcription, file)
 
-    speaker_segments = diarize_speakers(audio_file_path)
+    # # Refine transcription using GPT-4
+    print("Refining transcript with GPT-4 spellcheck...")
+    corrected_transcription = correct_transcription_with_gpt4(result.get("segments"), initial_prompt)
 
-    aligned_transcription = align_transcription_with_speakers(transcription_result, speaker_segments)
-
-    print("Saving final transcription ...")
-    formatted_transcription = "\n".join(f"{seg['speaker']}: {seg['text'].strip()}" for seg in aligned_transcription)
-
-    final_transcription_file = f"{file}_final_transcription.txt"
-    with open(final_transcription_file, "w", encoding="utf-8") as f:
-        f.write(formatted_transcription)
+    t.save_diarized_transcription(file, corrected_transcription)
 
     print("Audio transcription complete.")
 
-def diarize_speakers(audio_file):
+def correct_transcription_with_gpt4(aligned_transcription, initial_prompt):
     """
-    Applies speaker diarization using Pyannote and returns speaker segments.
+    Uses GPT-4 to refine the transcription while preserving speakers.
+
     """
 
-    if not hug_token:
-        raise ValueError("Hugging Face token not found. Add it to your .env file.")
+    system_prompt = f"You are a transcription assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly, but preserve speaker attribution: {initial_prompt}"
+    print(aligned_transcription)
+    corrected_transcription = []
+    for seg in aligned_transcription:
+    #     completion = client.chat.completions.create(
+    #         model="gpt-4o-mini",
+    #         temperature=0,
+    #         messages=[
+    #             {"role": "system", "content": system_prompt},
+    #             {"role": "user", "content": seg['text']},
+    #         ],
+    #     )
+    #     corrected_transcription.append({"speaker": seg['speaker'], "text": completion.choices[0].message.content})
+          corrected_transcription.append({"speaker": seg.get('speaker'), "text": seg.get('text')})
 
-    print("     --> Loading pyannote library ...")
-    # Load pre-trained diarization pipeline
-    pipeline = SpeakerDiarization.from_pretrained(
-        "pyannote/speaker-diarization", use_auth_token=hug_token
-    )
+    return corrected_transcription
 
-    # Run diarization on audio file
-    print("     --> Running pyannote library ...")
-    diarization = pipeline(audio_file)
 
-    # Store speaker labels and timestamps
-    speaker_segments = []
-    print("     --> Organizing speaker segments ...")
-    for segment, _, speaker in diarization.itertracks(yield_label=True):
-        speaker_segments.append({
-            "speaker": speaker,
-            "start": segment.start,
-            "end": segment.end
-        })
-
-    return speaker_segments
-
-def align_transcription_with_speakers(transcription_result, speaker_segments):
+def align_transcription_with_speakers(segments, diarization_df):
     """
-    Aligns transcribed text with speaker diarization timestamps.
+    Aligns WhisperX transcript with speaker diarization labels.
+    If no exact match is found, it assigns the closest speaker.
     """
 
     aligned_transcription = []
-    speaker_index = 0
-    current_speaker = speaker_segments[speaker_index]
+    speaker_map = {}  # Dictionary to map detected speakers to Speaker 1, Speaker 2, etc.
+    speaker_counter = 1  # Start naming speakers
 
-    temp_segment = {"speaker": current_speaker["speaker"], "text": ""}
+    for segment in segments:
+        start_time = segment.get("start", 0)
+        end_time = segment.get("end", 0)
+        text = segment.get("text", "").strip()
 
-    for word_data in transcription_result["segments"]:
-        start_time = word_data["start"]
-        end_time = word_data["end"]
-        text = word_data["text"]
+        assigned_speaker = "Unknown"
 
-        # Move to the correct speaker segment
-        while speaker_index < len(speaker_segments) - 1 and start_time >= speaker_segments[speaker_index + 1]["start"]:
-            aligned_transcription.append(temp_segment)
-            speaker_index += 1
-            current_speaker = speaker_segments[speaker_index]
-            temp_segment = {"speaker": current_speaker["speaker"], "text": ""}
+        # Find the speaker with overlapping time
+        for _, row in diarization_df.iterrows():
+            if (start_time >= row["start"] and start_time <= row["end"]) or (end_time >= row["start"] and end_time <= row["end"]):
+                detected_speaker = row["speaker"]
 
-        # Append text to the current speaker segment
-        temp_segment["text"] += " " + text
+                # Assign a generic "Speaker 1", "Speaker 2" label
+                if detected_speaker not in speaker_map:
+                    speaker_map[detected_speaker] = f"Speaker {speaker_counter}"
+                    speaker_counter += 1
 
-    # Append the last segment
-    aligned_transcription.append(temp_segment)
+                assigned_speaker = speaker_map[detected_speaker]
+                break  # Stop checking once we find the first matching speaker
+
+        aligned_transcription.append({"speaker": assigned_speaker, "text": text})
 
     return aligned_transcription
 

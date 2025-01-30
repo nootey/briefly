@@ -125,7 +125,9 @@ def chunk_transcript(transcript, prompt_word_count, overlap=300, model_context_l
 def process_chunk(chunk, index, model):
     try:
         chunk_with_prompt = define_prompt(chunk, True)
+        print(chunk_with_prompt)
         result = extract_notes(chunk_with_prompt, model)
+        print(result)
     except Exception as e:
         print(f"ERROR: Failed to process chunk {index + 1}: {e}")
         return e
@@ -228,7 +230,7 @@ def merge_and_save(summaries, key_points, action_steps, filename):
 def create_transcription_summary(transcript, audio_file):
 
     print("\nStarting summarization.")
-    model_name = "qwen2"
+    model_name = "command-r-plus"
     print(f"Loading summary model: {model_name}")
 
     transcript = " ".join(transcript)

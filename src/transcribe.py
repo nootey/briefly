@@ -61,6 +61,7 @@ def split_into_paragraphs(text, char_limit=300):
         paragraphs.append(current_paragraph.strip())
 
     return paragraphs
+
 def save_transcription(text, filename):
     """Save transcription as a JSON file using the MP3 filename.
 
@@ -83,4 +84,33 @@ def save_transcription(text, filename):
         json.dump(data, json_file, indent=4, ensure_ascii=False)
 
     print(f"Transcription saved to {json_file_path}")
+
+
+def save_diarized_transcription(file, corrected_transcription, char_limit=300):
+    """
+    Saves the final corrected transcription to a structured JSON format,
+    ensuring speaker differentiation and paragraph splitting.
+    """
+
+    formatted_transcription = []  # List to store structured transcription data
+
+    for seg in corrected_transcription:
+        speaker = seg["speaker"]
+        text = seg["text"].strip()
+
+        # Split text into readable paragraphs
+        paragraphs = split_into_paragraphs(text, char_limit)
+
+        # Append structured data to list (speaker & paragraphs separately)
+        formatted_transcription.append({"speaker": speaker, "text": paragraphs})
+
+    # Prepare JSON file path
+    json_file_path = f"results/transcriptions/{file}.json"
+    os.makedirs(os.path.dirname(json_file_path), exist_ok=True)  # Ensure directory exists
+
+    # Save JSON with structured formatting
+    with open(json_file_path, "w", encoding="utf-8") as json_file:
+        json.dump(formatted_transcription, json_file, indent=4, ensure_ascii=False)
+
+    print(f"Transcription successfully saved to {json_file_path}")
 
