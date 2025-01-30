@@ -82,7 +82,6 @@ def run_dependency_tests():
     # test_whisper()
     # test_ollama()
 
-
 # define a wrapper function for seeing how prompts affect transcriptions
 def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
 
@@ -130,7 +129,7 @@ def transcribe_audio(file, audio_file_path, initial_prompt):
 def get_initial_terms_from_user():
 
     # TEMP - hard code some values for the meeting used in testing
-    return "Lan-Xi, Human Vibration, Bruel & Kjar"
+    return "Lan-Xi, Human Vibration, Bruel & Kjar, Svantek"
 
     char_limit = 183  # Approximate character limit for Whisper input
     initial_prompt = []

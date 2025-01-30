@@ -228,7 +228,7 @@ def merge_and_save(summaries, key_points, action_steps, filename):
 def create_transcription_summary(transcript, audio_file):
 
     print("\nStarting summarization.")
-    model_name = "qwen2"
+    model_name = "command-r-plus"
     print(f"Loading summary model: {model_name}")
 
     transcript = " ".join(transcript)
