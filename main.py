@@ -63,9 +63,6 @@ def transcribe_audio(file, audio_file_path, initial_prompt):
 
 def get_initial_terms_from_user():
 
-    # TEMP - hard code some values for the meeting used in testing
-    return "Lan-Xi, Human Vibration, Bruel & Kjar, Svantek"
-
     char_limit = 183  # Approximate character limit for Whisper input
     initial_prompt = []
     print("\nEnter any potential business terms, that might help with transcription")
@@ -103,7 +100,7 @@ def main():
 
     initial_prompt = get_initial_terms_from_user()
 
-    file_name = "company_meeting"
+    file_name = "meeting_example_short"
     json_file_path = f"results/transcriptions/{file_name}.json"
     summary_model_name = "command-r-plus"
 

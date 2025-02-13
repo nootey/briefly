@@ -171,5 +171,19 @@ cython_debug/
 .pypirc
 .idea
 venv
-data
-results
+knowledge_base
+
+data/*
+!data/meeting_example_short.mp3
+
+results/summaries/*
+results/action_steps/*
+results/transcriptions/*
+!results/summaries/meeting_example_short.md
+!results/action_steps/meeting_example_short.md
+!results/transcriptions/meeting_example_short.json
+
+# Ensure parent directories exist but remain ignored
+!results/summaries/
+!results/action_steps/
+!results/transcriptions/
