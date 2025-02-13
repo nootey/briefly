@@ -1,86 +1,21 @@
 import json
 import os
-import sys
-import ollama
-import torch
 import whisper
-from tqdm import tqdm
 
 from src import transcribe as t
-from src import summarize as s
+from src import assistant as a
+from utils import py_helper as ph
 from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key:
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
     raise ValueError("OPENAI_API_KEY is not set in the environment")
 
 # Initialize OpenAI client
-client = OpenAI(api_key=api_key)
+openai_client = OpenAI(api_key=openai_api_key)
 
-def print_welcome_message():
-    print("\n")
-    message = "Welcome to Briefly!"
-    padding = 2
-    width = len(message) + padding * 2
-
-    print("#" * (width + 2))
-    print("#" + " " * width + "#")
-    print("#" + " " * padding + message + " " * padding + "#")
-    print("#" + " " * width + "#")
-    print("#" * (width + 2))
-    print("\n")
-
-
-def test_ollama():
-    """Test if Ollama is running and list available models."""
-    try:
-
-        # Get the list of available models
-        response = ollama.list()
-
-        # Print the list of models
-        print("Ollama is running. Available models:")
-        for model in response['models']:
-            print(f"- {model}")
-
-    except Exception as e:
-        print("Ollama Error:", e)
-
-def test_cuda():
-    """Check if CUDA is available for PyTorch."""
-    cuda_available = torch.cuda.is_available()
-    print("CUDA Available:", cuda_available)
-
-    if cuda_available:
-        print("CUDA Device Name:", torch.cuda.get_device_name(0))
-        print("CUDA Version:", torch.version.cuda)
-    else:
-        print("CUDA not found. Make sure NVIDIA drivers and CUDA Toolkit are installed.")
-
-def test_whisper():
-    """Check if OpenAI's Whisper is installed and working."""
-    try:
-        model = whisper.load_model("tiny")  # Load a small model to check functionality
-        print("Whisper Model Loaded Successfully!")
-    except Exception as e:
-        print("Whisper Error:", e)
-
-def check_available_openai_models():
-    """
-    Displays all available OpenAI models for the given API key.
-    """
-    models = client.models.list()
-    for model in models:
-        print(model.id)
-
-def run_dependency_tests():
-    """Run all tests for Ollama, CUDA, and Whisper."""
-    test_cuda()
-    # check_available_openai_models()
-    # test_whisper()
-    # test_ollama()
 
 # define a wrapper function for seeing how prompts affect transcriptions
 def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
@@ -95,7 +30,7 @@ def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, sys
 
     # Step 2: Spellchecking with GPT-4
     print("     --> Refining transcript ...")
-    completion = client.chat.completions.create(
+    completion = openai_client.chat.completions.create(
         model="gpt-4o-mini",
         temperature=0,
         messages=[
@@ -159,16 +94,18 @@ def get_initial_terms_from_user():
     return ", ".join(initial_prompt)
 def main():
 
-    print_welcome_message()
+    ph.ensure_directories()
+    ph.print_welcome_message()
 
     print("Checking for required dependencies...")
-    run_dependency_tests()
+    ph.run_dependency_tests()
     print("All dependencies are present, proceeding ...")
 
     initial_prompt = get_initial_terms_from_user()
 
-    file_name = "ims_meeting"
+    file_name = "company_meeting"
     json_file_path = f"results/transcriptions/{file_name}.json"
+    summary_model_name = "command-r-plus"
 
     # Prepare the audio file
     audio_file_path = t.prepare_audio_file(file_name)
@@ -184,12 +121,23 @@ def main():
     with open(json_file_path, "r", encoding="utf-8") as jf:
         transcription_data = json.load(jf)
 
+    # Summarize the transcript
     transcription = transcription_data.get("transcription", "")
-
     print(f"Transcription [{file_name}.json] selected")
 
-    # Summarize the transcript
-    s.create_transcription_summary(transcription, file_name)
+    print("Generating summary ...")
+    summary = a.create_summary(openai_client, "gpt-4o", transcription_data)
+    with open(f"results/summaries/{file_name}.md", "w", encoding="utf-8") as md_file:
+        md_file.write(summary)
+
+    print("Generating personalized action steps ...")
+    action_steps = a.entrypoint(openai_client, transcription_data)
+
+    with open(f"results/action_steps/{file_name}.md", "w", encoding="utf-8") as md_file:
+        md_file.write(action_steps)
+
+    print(f"\nSummary saved as {file_name}.md")
+
 
 if __name__ == "__main__":
     main()

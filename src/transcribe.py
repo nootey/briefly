@@ -45,8 +45,7 @@ def extract_mp3(mp4_file, mp3_file):
     return mp3_file
 
 def split_into_paragraphs(text, char_limit=300):
-    """Splits text into paragraphs based on a character limit,
-    ensuring splits occur at sentence boundaries if possible."""
+
     paragraphs = []
     current_paragraph = ""
 
@@ -62,10 +61,7 @@ def split_into_paragraphs(text, char_limit=300):
 
     return paragraphs
 def save_transcription(text, filename):
-    """Save transcription as a JSON file using the MP3 filename.
 
-    If a file with the same name exists, it appends an index (e.g., file_1.json).
-    """
     json_file_path = f"results/transcriptions/{filename}.json"
 
     # # Ensure unique filename if file already exists
