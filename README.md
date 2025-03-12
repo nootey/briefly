@@ -4,6 +4,10 @@ Briefly is an effective way to transcribe and summarize your meetings, to create
 
 <hr>
 
+## Notice. 
+
+⚠️ This was a research project made in collaboration with my employer. It also got made redundant with the launch of OpenAIs web agent research API. 
+
 ## Setup
 
 ### Environment
