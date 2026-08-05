@@ -1,203 +1,135 @@
-import os.path
-import re
-import ollama
+from src.config import SummarizeConfig
 
-def define_prompt(transcript, include_transcript=False):
-    prompt = ""
+SUMMARY_PROMPT = """\
+Summarize the transcript below.
 
-    if include_transcript:
-        prompt += f"You are given this transcript:\n{transcript}\n\n"
+Write 250-500 words of markdown under a single `## Summary` heading. Stay factual — do \
+not invent details that are not in the transcript.
 
-    prompt += """
-    You are an expert AI assistant, tasked with summarizing a meeting transcript in Markdown format. Do not deviate, or you will be terminated.
+Then, under a `## Key Concepts` heading, list up to 5 of the ideas the transcript leans \
+on most, one per line as `- **Term** — one sentence on what it means here`. Fewer than \
+five is fine when the transcript does not support five.
 
-    You carefully provide accurate, factual, thoughtful, nuanced responses, and are brilliant at reasoning. Only output the summary which can include questions asked, any interesting quotes, and any action items that were discussed. 
+Output only those two sections.
 
-    Analyze the following meeting transcript. Provide a comprehensive summary paragraph or two (250-400 words) that captures the key points discussed, decisions made, and the overall purpose of the meeting:
+Transcript:
+{transcript}
+"""
 
-    The output must include this exact formatting:
+MERGE_PROMPT = """\
+The partial summaries below describe consecutive parts of one long transcript.
 
-    ## Summary
-    - A concise and well-structured summary of the meeting.
-    """
+Merge them into a single coherent summary under one `## Summary` heading, dropping \
+repetition while keeping every distinct point. Ignore their `## Key Concepts` sections; \
+those are handled separately.
 
-    return prompt
+Output only that section.
 
+Partial summaries:
+{transcript}
+"""
 
-def define_final_cleanup_prompt(merged_summary):
+CONCEPTS_PROMPT = """\
+Below is a summary of one long transcript, followed by the notes taken on each of its \
+parts.
 
-    prompt = f"""
+From both, produce a single `## Key Concepts` list of up to 5 entries, one per line as \
+`- **Term** — one sentence on what it means here`. Prefer ideas that run through the \
+whole transcript over ones confined to a single part, and collapse entries that name \
+the same idea. Take the wording of each term from the notes, which sit closer to what \
+was actually said. Fewer than five is fine.
 
-    Summaries
-    {merged_summary}
+Output only that section.
 
-    You are an expert AI assistant, tasked with summarizing a meeting transcript in Markdown format. Do not deviate, or you will be terminated. 
-    You were provided with meeting summaries from multiple other assistants. Your task is to merge them, so that they remain
-    coherent with the structure, but keep the context of all of them. You must formulate the final product in MARKDOWN, in this exact structure. Do not deviate from it.
+Summary:
+{summary}
 
-    The output must include this exact formatting:
-
-    ## Summary
-    - A concise and well-structured summary of the meeting.
-    """
-
-    return prompt
-
-
-def extract_notes(transcript, model):
-    try:
-        # Define the prompt
-        prompt = define_prompt(transcript, True)
-
-        # Make the API call to Ollama
-        response = ollama.chat(model=model, messages=[{"role": "user", "content": prompt}])
-
-        # Check if the response is in the expected format
-        if "message" not in response or "content" not in response["message"]:
-            raise ValueError("Invalid response format from Ollama")
-
-        return response["message"]["content"]
-
-    except KeyError as e:
-        print(f"KeyError: Missing expected key in the response: {e}")
-    except ValueError as e:
-        print(f"ValueError: {e}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+Notes on each part:
+{transcript}
+"""
 
 
-def chunk_transcript(transcript, prompt_word_count, overlap=300, model_context_limit=5000):
+def run(transcript: str, config: SummarizeConfig, api_key: str | None = None) -> str:
+    chunks = _chunk(transcript, config.chunk_chars)
+    template = config.prompt or SUMMARY_PROMPT
+    if "{transcript}" not in template:
+        raise ValueError("summarize.prompt must contain the {transcript} placeholder")
 
-    # Compute the maximum chunk size allowed
+    if len(chunks) == 1:
+        return _complete(template.format(transcript=chunks[0]), config, api_key)
 
-    max_chunk_size = model_context_limit - prompt_word_count
-    if max_chunk_size <= overlap:
-        raise ValueError("Adjusted max_chunk_size must be greater than overlap")
+    print(f"  transcript split into {len(chunks)} chunks")
+    partials = []
+    for i, chunk in enumerate(chunks, start=1):
+        print(f"  summarizing chunk {i}/{len(chunks)}")
+        partials.append(_complete(template.format(transcript=chunk), config, api_key))
 
-    words = transcript.split()  # Split transcript into words
-    chunks = []
-    start = 0
-    index = 1
-    total_words = len(words)
+    notes = "\n\n".join(partials)
+    print("  merging partial summaries")
+    summary = _complete(MERGE_PROMPT.format(transcript=notes), config, api_key)
 
-    print(f"\nTranscript character count: {len(words)}")
-    print(f"Prompt character count: {prompt_word_count}")
-    print(f"Calculated max chunk size: {max_chunk_size}")
+    print("  extracting key concepts")
+    concepts = _complete(
+        CONCEPTS_PROMPT.format(summary=summary, transcript=notes), config, api_key
+    )
+    return f"{summary}\n\n{concepts}"
 
-    while start < total_words:
-        end = min(start + max_chunk_size, total_words)  # Ensure we don’t exceed the total word count
 
-        print(f"Chunk {index} starts at character: {start}, and ends at character: {end}")
+def _chunk(text: str, limit: int) -> list[str]:
+    """Split on paragraph, then sentence, then hard boundaries under `limit`."""
+    if limit <= 0:
+        raise ValueError("summarize.chunk_chars must be positive")
+    if len(text) <= limit:
+        return [text]
 
-        chunk = " ".join(words[start:end])
-
-        if chunk.strip():  # Only add non-empty chunks
-            chunks.append(chunk)
-            print(f"Appended chunk {index} with character count: {len(chunk.split())}")
-        else:
-            print(f"Skipping empty chunk {index}")
-
-        start += max_chunk_size - overlap  # Move forward while keeping overlap
-        index += 1
-
+    chunks, current = [], ""
+    for piece in _pieces(text, limit):
+        if current and len(current) + len(piece) > limit:
+            chunks.append(current.strip())
+            current = ""
+        current += piece
+    if current.strip():
+        chunks.append(current.strip())
     return chunks
 
 
-def process_chunk(chunk, index, model):
-    try:
-        chunk_with_prompt = define_prompt(chunk, True)
-        result = extract_notes(chunk_with_prompt, model)
-    except Exception as e:
-        print(f"ERROR: Failed to process chunk {index + 1}: {e}")
-        return e
-
-    # Normalize the headers in the response
-    return result
-
-
-def extract_notes_per_chunk(chunks, model):
-    summaries = []
-
-    for i, chunk in enumerate(chunks):
-        print(f"     --> Processing chunk {i + 1}/{len(chunks)}...")
-
-        result = process_chunk(chunk, i, model)
-        if len(chunks) == 1:
-            return result
-
-        # Extract sections
-        summary_start = result.find("## Summary")
-
-        if summary_start == -1:
-            print(f"     --> WARNING: Missing sections in chunk {i + 1}. Skipping.")
+def _pieces(text: str, limit: int):
+    """Yield fragments no longer than `limit`, preferring natural break points."""
+    for paragraph in text.splitlines(keepends=True):
+        if len(paragraph) <= limit:
+            yield paragraph
             continue
-
-        summaries.append(result[summary_start:].strip())
-
-        print(f"     --> Chunk {i + 1} processed successfully.")
-
-    return summaries
-
-
-def save_file_as_md(summary, filename):
-
-    path = "results/summaries"
-    with open(os.path.join(path, filename + ".md"), "w", encoding="utf-8") as md_file:
-        md_file.write(summary)
-    print(f"\nSummary saved as {filename}.md")
+        for sentence in paragraph.replace(". ", ".\x00").split("\x00"):
+            if len(sentence) <= limit:
+                yield sentence
+                continue
+            # No natural boundary left (e.g. an unpunctuated wall of text).
+            for i in range(0, len(sentence), limit):
+                yield sentence[i : i + limit]
 
 
-def refine_final_summary(summaries, model):
+def _complete(prompt: str, config: SummarizeConfig, api_key: str | None) -> str:
+    from openai import APIStatusError, OpenAI
 
-    # Merge extracted parts
-    merged_summary = "\n\n".join(summaries).strip()
-
-    # Ensure headers are properly formatted before final processing
-    merged_summary = re.sub(r"## Summary\n*", "", merged_summary).strip()
-
-    # Create the final cleanup prompt
-    final_prompt = define_final_cleanup_prompt(merged_summary)
-
-    # Call AI model to refine the output
-    refined_response = ollama.chat(model=model, messages=[{"role": "user", "content": final_prompt}])
-
-    # Normalize headers to enforce consistency
-    return refined_response["message"]["content"]
-
-
-def merge_and_save(summaries, key_points, action_steps, filename):
-
-    # Merge all summaries into one section
-    merged_summary = "\n\n".join(summaries).strip()
-    merged_summary = re.sub(r"## Summary\n*", "", merged_summary).strip()  # Remove redundant headers
-
-    # Construct final markdown output
-    final_output = f"""## Summary
-{merged_summary}
-"""
-
-    save_file_as_md(final_output, filename)
-
-
-def create_transcription_summary(transcript, audio_file, model_name):
-
-    print("\nStarting summarization.")
-    print(f"Loading summary model: {model_name}")
-
-    transcript = " ".join(transcript)
-    prompt = define_prompt(transcript, False)
-    prompt_word_count = len(prompt.split())
-
-    print(f"     --> Generating a summary via chunks")
-    chunks = chunk_transcript(transcript, prompt_word_count)
-    if len(chunks) == 1:
-        print("     --> Performing clean up ...")
-        final_summary = extract_notes_per_chunk(chunks, model_name)
-        # save_file_as_md(summary, audio_file + "_" + model_name)
-    else:
-        summaries = extract_notes_per_chunk(chunks, model_name)
-        print("     --> Merging chunked content and performing clean up ...")
-        final_summary = refine_final_summary(summaries, model_name)
-        # save_file_as_md(final_summary, audio_file + "_" + model_name)
-
-    return final_summary
+    client = OpenAI(
+        base_url=config.base_url,
+        # Local endpoints (Ollama, vLLM, llama.cpp) ignore the key but the SDK still insists on a non-empty one.
+        api_key=api_key or "no-key-required",
+        max_retries=8,
+    )
+    try:
+        response = client.chat.completions.create(
+            model=config.model,
+            temperature=config.temperature,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except APIStatusError as exc:
+        if exc.status_code != 413:
+            raise
+        # Not retryable: one request simply exceeded what the tier accepts.
+        raise RuntimeError(
+            f"{config.model} rejected a {len(prompt):,}-character request as too "
+            f"large. Lower summarize.chunk_chars in config.yaml — the provider's "
+            f"reply says what it will accept: {exc}"
+        ) from exc
+    return response.choices[0].message.content.strip()

@@ -1,140 +1,152 @@
-import json
-import os
-import whisper
+import argparse
+import sys
+from datetime import datetime
+from pathlib import Path
 
-from src import transcribe as t
-from src import assistant as a
-from utils import py_helper as ph
-from openai import OpenAI
-from dotenv import load_dotenv
+from src import config as cfg
+from src import summarize, transcribe
 
-load_dotenv()
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    raise ValueError("OPENAI_API_KEY is not set in the environment")
-
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=openai_api_key)
+# Rough VRAM needs for faster-whisper at float16 and the default batch_size, keyed by the family a model name starts with.
+MODEL_VRAM_GIB = {"tiny": 1, "base": 1, "small": 2, "medium": 3, "turbo": 3, "large": 5}
 
 
-# define a wrapper function for seeing how prompts affect transcriptions
-def transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt):
+def model_vram_gib(model: str) -> int | None:
+    for family, gib in MODEL_VRAM_GIB.items():
+        if model.startswith(family):
+            return gib
+    return None
 
-    # Step 1: Transcription
-    transcribed_text = ""
-    print("     --> Transcribing audio...")
 
-    transcription_result = model.transcribe(audio_file_path, prompt=initial_prompt)
-    transcribed_text = transcription_result["text"]
-    t.save_transcription(transcribed_text, file)
+def check_system_requirements(config: cfg.Config) -> None:
+    print("Checking system requirements ...")
 
-    # Step 2: Spellchecking with GPT-4
-    print("     --> Refining transcript ...")
-    completion = openai_client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": transcribed_text},
-        ],
-    )
+    if config.transcribe.provider != "local":
+        print("  transcribing via the OpenAI API, nothing needed locally")
+        return
 
-    return completion.choices[0].message.content
+    # faster-whisper decodes audio through PyAV, which bundles its own ffmpeg
+    # libraries, so there is nothing to check for on PATH.
+    device = transcribe.resolve_device(config.transcribe.local.device)
+    if device == "cuda":
+        import torch
 
-def transcribe_audio(file, audio_file_path, initial_prompt):
+        print(f"  CUDA: {torch.cuda.get_device_name(0)} (torch {torch.__version__})")
+        free, total = torch.cuda.mem_get_info()
+        gib = 1024**3
+        print(f"  VRAM: {free / gib:.1f} GiB free of {total / gib:.1f} GiB")
 
-    # audio_file_path = t.prepare_audio_file(file)
-
-    model_name = "large-v3"
-    print(f"Loading transcription model: {model_name}")
-    model = whisper.load_model(model_name)
-
-    system_prompt = "You are a helpful company assistant. Your task is to correct any spelling discrepancies in the transcribed text. Make sure that the names of the following products are spelled correctly: " + initial_prompt
-
-    print("Starting transcription: ")
-    # result = model.transcribe(audio_file_path, initial_prompt=initial_prompt)
-    result = transcribe_with_spellcheck(file, model, audio_file_path, initial_prompt, system_prompt)
-
-    print("Saving transcription ...")
-    # t.save_transcription(result["text"], file)
-    t.save_transcription(result, file)
-
-    print("Audio transcription complete.")
-
-def get_initial_terms_from_user():
-
-    char_limit = 183  # Approximate character limit for Whisper input
-    initial_prompt = []
-    print("\nEnter any potential business terms, that might help with transcription")
-    print("You can also skip this, just press enter.")
-
-    while True:
-        user_input = input("Input terms: ").strip()
-        if not user_input:
-            break
-
-        initial_prompt = [word.strip() for word in user_input.split(",")]
-
-        if len(initial_prompt) < 1 or len(initial_prompt) > 7:
-            print("Info: Please enter between 1 and 7 terms.")
-            continue
-
-        total_chars = sum(len(word) for word in initial_prompt)
-        if total_chars > char_limit:
-            print(f"Error: Total character length ({total_chars}) exceeds the {char_limit}-character limit. Please try again.")
-            continue  # Ask for input again
-
-        break
-
-    # Print the resulting array
-    print("User has provided the following terms:", initial_prompt)
-    return ", ".join(initial_prompt)
-def main():
-
-    ph.ensure_directories()
-    ph.print_welcome_message()
-
-    print("Checking for required dependencies...")
-    ph.run_dependency_tests()
-    print("All dependencies are present, proceeding ...")
-
-    initial_prompt = get_initial_terms_from_user()
-
-    file_name = "meeting_example_short"
-    json_file_path = f"results/transcriptions/{file_name}.json"
-    summary_model_name = "command-r-plus"
-
-    # Prepare the audio file
-    audio_file_path = t.prepare_audio_file(file_name)
-
-    print("\nStarting transcription.")
-    # Create or load transcript
-    if not os.path.exists(json_file_path):
-        print(f"Transcript {file_name}.json not found, generating ...")
-        transcribe_audio(file_name, audio_file_path, initial_prompt)
+        needed = model_vram_gib(config.transcribe.local.model)
+        if needed and free / gib < needed:
+            print(
+                f"  warning: '{config.transcribe.local.model}' wants about {needed:g} GiB "
+                f"and only {free / gib:.1f} GiB is free. Close other GPU apps, lower "
+                f"transcribe.local.batch_size, or pick a smaller model if it fails to "
+                f"allocate."
+            )
     else:
-        print(f"Transcript {file_name}.json found, proceeding ...")
+        print(
+            "  CUDA: not available, falling back to the CPU. Transcription will be "
+            "much slower — consider a smaller transcribe.local.model such as 'turbo' "
+            "or 'small', or set transcribe.provider to 'openai'."
+        )
 
-    with open(json_file_path, "r", encoding="utf-8") as jf:
-        transcription_data = json.load(jf)
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="briefly",
+        description="Transcribe an audio/video file and summarize it.",
+    )
+    parser.add_argument(
+        "-f",
+        "--file",
+        required=True,
+        metavar="INPUT_FILE",
+        help="audio/video file placed in ./data/input. A bare name is looked up.",
+    )
+    parser.add_argument("--config", default=cfg.CONFIG_FILE, help="path to config.yaml")
+    parser.add_argument("--transcribe-only", action="store_true", help="skip the summary")
 
-    # Summarize the transcript
-    transcription = transcription_data.get("transcription", "")
-    print(f"Transcription [{file_name}.json] selected")
+    return parser.parse_args(argv)
 
-    print("Generating summary ...")
-    summary = a.create_summary(openai_client, "gpt-4o", transcription_data)
-    with open(f"results/summaries/{file_name}.md", "w", encoding="utf-8") as md_file:
-        md_file.write(summary)
 
-    print("Generating personalized action steps ...")
-    action_steps = a.entrypoint(openai_client, transcription_data)
+def resolve_input(source: str, input_dir: Path) -> Path:
+    """Turn the --file value into a local file, rejecting URLs for now."""
+    if source.startswith(("http://", "https://")):
+        raise NotImplementedError(
+            f"downloading is not implemented yet: {source}. "
+            f"Download the file yourself and put it in {input_dir}."
+        )
 
-    with open(f"results/action_steps/{file_name}.md", "w", encoding="utf-8") as md_file:
-        md_file.write(action_steps)
+    path = Path(source)
+    if not path.exists():
+        path = input_dir / source
+    if not path.exists():
+        raise FileNotFoundError(f"no such file: {source} (looked in {input_dir} too)")
+    return path
 
-    print(f"\nSummary saved as {file_name}.md")
+
+def process(path: Path, config: cfg.Config, output_dir: Path, args: argparse.Namespace) -> None:
+    run_dir = output_dir / f"{path.stem}_{datetime.now().astimezone():%Y%m%d-%H%M%S}"
+    run_dir.mkdir(parents=True)
+    print(f"Writing this run to {run_dir}")
+
+    print("Transcribing audio ...")
+    result = transcribe.run(path, config.transcribe, config.openai_api_key)
+
+    # The original transcript, plus the English one when the audio was not English.
+    transcripts = {"transcript.txt": result.text}
+    if result.english:
+        transcripts["transcript.en.txt"] = result.english
+
+    for name, text in transcripts.items():
+        (run_dir / name).write_text(text, encoding="utf-8")
+        print(f"File transcribed to {run_dir / name} ({len(text):,} characters)")
+
+    if args.transcribe_only:
+        return
+
+    for name, text in transcripts.items():
+        summary_name = name.replace("transcript", "summary").replace(".txt", ".md")
+        print(f"Summarizing {name} ...")
+        summary = summarize.run(text, config.summarize, config.summary_api_key)
+        (run_dir / summary_name).write_text(summary, encoding="utf-8")
+        print(f"Summary saved to {run_dir / summary_name}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+
+    print("Welcome to Briefly ...")
+
+    try:
+        config = cfg.load(args.config)
+        print(f"Loaded config: {config}")
+
+        # After the config load: what we need depends on the chosen provider.
+        check_system_requirements(config)
+
+        output_dir = Path(config.paths.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        path = resolve_input(args.file, Path(config.paths.input_dir))
+        print(f"Input file parsed successfully: {path} ({path.stat().st_size / 1024**2:.1f} MiB)")
+
+    except (OSError, RuntimeError, TypeError, ValueError, NotImplementedError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+
+    print(f"Using transcribe model: {config.transcribe.provider}/{config.transcribe_model}")
+    if not args.transcribe_only:
+        print(f"Using summarize model:  {config.summarize.model} via {config.summarize.base_url}")
+
+    try:
+        process(path, config, output_dir, args)
+    except Exception as exc:  # noqa: BLE001 - last stop before the traceback reaches the user
+        print(f"Processing the file failed: {exc}", file=sys.stderr)
+        return 1
+
+    print("\n Transcription complete ...")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

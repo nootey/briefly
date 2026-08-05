@@ -1,20 +1,15 @@
 [project]
 name = "briefly"
-version = "0.1.0"
-description = "Transcribe and summarize meetings into actionable steps and follow-ups."
+version = "0.2.0"
+description = "Transcribe audio and summarize it. Stateless, configurable, nothing else."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "beautifulsoup4>=4.12.0",
-    "chromadb>=0.5.0",
-    "googlesearch-python>=1.2.5",
-    "ollama>=0.4.0",
+    "faster-whisper>=1.1.0",
     "openai>=1.0.0",
-    "openai-whisper>=20240930",
-    "pydub>=0.25.1",
     "python-dotenv>=1.0.0",
-    "requests>=2.32.0",
-    "torch>=2.0.0",
+    "pyyaml>=6.0",
+    "torch>=2.6.0",
 ]
 
 [dependency-groups]
@@ -22,3 +17,15 @@ dev = [
     "ruff>=0.15.0",
     "pre-commit>=4.0.0",
 ]
+
+# faster-whisper runs on CTranslate2, not torch — torch is here for the cuBLAS and
+# cuDNN shared libraries CTranslate2 loads at runtime, plus the VRAM reporting in
+# main.py. PyPI's torch wheels are CPU-only on Windows, so pull it from PyTorch's
+# own CUDA 12.8 index instead. Swap cu128 for cpu if you have no NVIDIA GPU.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
