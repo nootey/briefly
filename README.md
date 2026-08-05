@@ -12,14 +12,16 @@ Briefly is an effective way to transcribe and summarize your meetings, to create
 
 ### Environment
 
-Create a virtual enviroment for Python
+This project uses [uv](https://docs.astral.sh/uv/). Install it, then sync the environment:
 ```shell
-python3 -m venv venv
+uv sync
 ```
 
-Activate it with
+Run the app with `make run` (or `uv run python -m main`) and lint with `make lint`.
+
+Optionally install the pre-commit hook so Ruff runs on every commit:
 ```shell
-source venv/bin/activate
+uv run --group dev pre-commit install
 ```
 
 ### Dependencies
@@ -31,11 +33,15 @@ You need to get api keys for the following services:
 
 ### Configuration
 
-The application can be configured through environment variables, by creating a .env file in project root. The following options can be configured:
+The application is configured through environment variables. Copy the example file and fill it in:
+```shell
+cp .env.example .env
 ```
-OPENAI_API_KEY="key"
-OLLAMA_HOST="http://localhost:11434"
-```
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | yes | Used for transcript refinement, summaries and action steps. |
+| `OLLAMA_HOST` | no | Read by the ollama client, defaults to `http://localhost:11434`. |
 
 ### LLM Specific
 Check if CUDA is working (for GPU Acceleration)

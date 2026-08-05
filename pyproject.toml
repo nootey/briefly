@@ -1,0 +1,24 @@
+[project]
+name = "briefly"
+version = "0.1.0"
+description = "Transcribe and summarize meetings into actionable steps and follow-ups."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.12.0",
+    "chromadb>=0.5.0",
+    "googlesearch-python>=1.2.5",
+    "ollama>=0.4.0",
+    "openai>=1.0.0",
+    "openai-whisper>=20240930",
+    "pydub>=0.25.1",
+    "python-dotenv>=1.0.0",
+    "requests>=2.32.0",
+    "torch>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.0",
+    "pre-commit>=4.0.0",
+]

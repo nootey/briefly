@@ -1,20 +1,15 @@
 The meeting focused on the strategic implementation and management of the SLA Mini Grant Program for the 2021-2022 year. Key points included:
 
-1. **Program Overview and Requirements**: Grantees must complete a webinar and the Supporting Beginning Readers modules on Niche Academy before funds are released. The program is led by Jeannie Standall, with financial support from Jamie Mott.
+1. **Grant Requirements and Timeline**: Grantees must complete a webinar and the Supporting Beginning Readers modules before funds are released. The grant period runs from August 16 to April 18, with specific deadlines for interim and final reports, and fund obligations.
 
-2. **Grant Goals**: 
-   - Round 1 aims to increase reading in homes and access to quality educational materials for preschool to first grade.
-   - Round 2 and upper elementary focus on similar goals for all elementary grades, with an additional goal of increasing financial support for school libraries.
+2. **Program Goals**: The primary objectives are to increase reading among children in developmental preschool programs through first grade, enhance access to quality educational materials, and improve reading levels. Round 2 grantees also aim to boost financial support for school libraries.
 
-3. **Funding and Distribution**: $154,000 was awarded to 34 schools across the state. The grant period runs from August 16 to April 18, with specific deadlines for fund obligation and expenditure.
+3. **Funding and Allocation**: A total of $154,000 was awarded to 34 schools. Grantees must spend 40% of funds on nonfiction titles, with allowances for ebooks and eaudiobooks. Certain purchases, like AR tests and food, are not permitted.
 
-4. **Implementation Strategies**: Grantees are encouraged to plan for contingencies, such as remote learning scenarios, and ensure students can access books. Digital materials are allowable, but considerations for access and maintenance are necessary.
+4. **Contingency Planning**: Grantees are encouraged to prepare for various scenarios, including remote learning, to ensure continued access to library resources.
 
-5. **Financial and Reporting Requirements**: 
-   - 40% of funds must be spent on nonfiction titles.
-   - Interim and final reports are due on January 14 and April 29, respectively.
-   - All funds must be obligated by March 1 and spent by March 31.
+5. **Best Practices**: Successful grantees maintain organized documentation, understand reporting requirements, and adhere to deadlines. They are advised to establish communication with ICFL contacts for support.
 
-6. **Best Practices**: Successful grantees maintain organized documentation, understand reporting requirements, and communicate effectively with district offices. They also utilize resources like the ICFL contact sheet and the SLA mini-grant webpage.
+6. **Resource Access**: Grantees are encouraged to utilize the Idaho Digital Ebook Alliance for additional resources and to connect with past grantees for advice.
 
-Overall, the meeting emphasized the importance of strategic planning, adherence to deadlines, and effective use of resources to achieve the grant's educational goals.
+Overall, the meeting emphasized the importance of strategic planning, adherence to guidelines, and proactive communication to ensure the successful execution of the grant program.

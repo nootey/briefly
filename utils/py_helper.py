@@ -2,11 +2,11 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 import ollama
 import torch
 import whisper
-from fontTools import unicodedata
 
 from main import openai_client
 
