@@ -28,7 +28,8 @@ def check_system_requirements(config: cfg.Config) -> None:
     # libraries, so there is nothing to check for on PATH.
     device = transcribe.resolve_device(config.transcribe.local.device)
     if device == "cuda":
-        import torch
+        # resolve_device only returns cuda once torch has confirmed a GPU, so it is here.
+        torch = transcribe.load_torch()
 
         print(f"  CUDA: {torch.cuda.get_device_name(0)} (torch {torch.__version__})")
         free, total = torch.cuda.mem_get_info()
@@ -44,10 +45,12 @@ def check_system_requirements(config: cfg.Config) -> None:
                 f"allocate."
             )
     else:
+        missing = " (torch is not installed — `uv sync --extra cuda` adds the GPU build)"
         print(
-            "  CUDA: not available, falling back to the CPU. Transcription will be "
-            "much slower — consider a smaller transcribe.local.model such as 'turbo' "
-            "or 'small', or set transcribe.provider to 'openai'."
+            f"  CUDA: not available, falling back to the CPU"
+            f"{missing if transcribe.load_torch() is None else ''}. Transcription will "
+            f"be much slower — consider a smaller transcribe.local.model such as "
+            f"'turbo' or 'small', or set transcribe.provider to 'openai'."
         )
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

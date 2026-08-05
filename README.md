@@ -8,7 +8,7 @@ database, no crawling, no follow-up logic. Just data in, data out.
 This project uses [uv](https://docs.astral.sh/uv/):
 
 ```shell
-uv sync
+uv sync --extra cuda   # drop the extra if you have no NVIDIA GPU
 cp .env.example .env
 ```
 
@@ -25,19 +25,23 @@ The first local run downloads the model weights to `~/.cache/huggingface` (`larg
 | `OPENAI_API_KEY` | `transcribe.provider` is `openai`. Unused for local transcription. |
 | `SUMMARY_MODEL_API_KEY` | The provider `summarize.base_url` points at requires a key. Leave empty for Ollama and friends. |
 
-`torch` is pulled from PyTorch's CUDA 12.8 index — it's there for the cuBLAS/cuDNN libraries
-CTranslate2 loads at runtime. Without an NVIDIA GPU, swap `cu128` for `cpu` in `pyproject.toml` to
-avoid downloading the CUDA build. Check what you have with:
+GPU transcription lives in the optional `cuda` extra, which pulls `torch` from PyTorch's CUDA 12.8
+index for the cuBLAS/cuDNN libraries CTranslate2 loads at runtime. It's a multi-gigabyte download,
+so a plain `uv sync` leaves it out and everything still runs — on the CPU. Check what you have
+with:
 
 ```shell
-uv run python -c "import torch; print(torch.cuda.is_available())"
+uv run --extra cuda python -c "import torch; print(torch.cuda.is_available())"
 ```
+
+`uv run` syncs the environment to whatever it's told, so keep `--extra cuda` on every run once
+you've installed it — otherwise the next run removes it again. `make run` passes it by default.
 
 ## Usage
 
 ```shell
-uv run python -m main --file meeting.mp3            # looked up in data/input
-make file=meeting.mp3                               # any var= is forwarded as a flag
+uv run --extra cuda python -m main --file meeting.mp3   # looked up in data/input
+make file=meeting.mp3                                   # any var= is forwarded as a flag
 make file=meeting.mp3 transcribe-only=1
 ```
 
@@ -80,8 +84,8 @@ To change models, endpoints or devices, edit `config.yaml` — or keep variants 
 point at them per run:
 
 ```shell
-uv run python -m main --file meeting.mp3 --config config.local.yaml
-uv run python -m main --file meeting.mp3 --transcribe-only
+uv run --extra cuda python -m main --file meeting.mp3 --config config.local.yaml
+uv run --extra cuda python -m main --file meeting.mp3 --transcribe-only
 ```
 
 The keys worth knowing about — every one is optional and falls back to the value shown in
@@ -129,5 +133,9 @@ provider's key in `SUMMARY_MODEL_API_KEY`:
 
 ```shell
 make lint
+make test
 uv run --group dev pre-commit install
 ```
+
+The tests never touch a model, a GPU or a network call — every slow edge is stubbed — so CI runs
+them without the `cuda` extra.

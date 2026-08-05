@@ -35,15 +35,26 @@ def run(audio_path: Path, config: TranscribeConfig, api_key: str | None = None) 
         return _openai(audio_path, config, api_key)
     raise ValueError(f"unknown transcribe provider: {config.provider!r} (use 'local' or 'openai')")
 
+def load_torch():
+    """torch ships as the optional `cuda` extra; without it there is no GPU path."""
+    try:
+        import torch
+    except ImportError:
+        return None
+    return torch
+
+
 def resolve_device(requested: str) -> str:
-    import torch
+    torch = load_torch()
+    has_cuda = torch is not None and torch.cuda.is_available()
 
     if requested == "auto":
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    if requested == "cuda" and not torch.cuda.is_available():
+        return "cuda" if has_cuda else "cpu"
+    if requested == "cuda" and not has_cuda:
+        missing = "torch is not installed" if torch is None else "torch reports no CUDA GPU"
         raise RuntimeError(
-            "config asks for device: cuda but torch reports no CUDA GPU. "
-            "Use device: auto to fall back to the CPU."
+            f"config asks for device: cuda but {missing}. Install the GPU extra with "
+            f"`uv sync --extra cuda`, or use device: auto to fall back to the CPU."
         )
     return requested
 
@@ -63,9 +74,9 @@ def format_duration(seconds: float) -> str:
 
 
 def _register_cuda_libraries() -> None:
-    if sys.platform != "win32":
+    torch = load_torch()
+    if sys.platform != "win32" or torch is None:
         return
-    import torch
 
     lib = Path(torch.__file__).parent / "lib"
     if lib.is_dir():
