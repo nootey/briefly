@@ -1,0 +1,33 @@
+transcribe:
+  provider: local
+  language: auto
+  prompt: "" # Spelling hints
+  translate_to_english: true
+
+  local:
+    model: large-v3 # tiny, base, small, medium, large, large-v2, large-v3, turbo.
+    device: auto # auto picks cuda when a GPU is available, otherwise cpu (much slower).
+    compute_type: auto     # auto, float16, int8_float16, int8, float32. auto means float16 on a GPU, int8 on a CPU.
+    batch_size: 16 # Audio windows decoded at once. This is the speed knob: raising it trades VRAM for throughput.
+    beam_size: 5
+    timeout_minutes: 60 # Give up if transcription runs this long. Set 0 to wait indefinitely.
+
+  openai:
+    model: whisper-1
+
+# Any OpenAI-compatible chat endpoint. Point base_url wherever you like and put
+# that provider's key in SUMMARY_MODEL_API_KEY. Known-good endpoints:
+#   groq       https://api.groq.com/openai/v1
+#   openai     https://api.openai.com/v1
+#   openrouter https://openrouter.ai/api/v1
+#   ollama     http://localhost:11434/v1   (no key needed)
+summarize:
+  base_url: "https://api.groq.com/openai/v1"
+  model: "llama-3.3-70b-versatile"
+  temperature: 0.2
+  chunk_chars: 30000 # Transcripts longer than this are summarized in chunks, then merged.  Groq's on-demand tier allows 12k tokens/min, and 30000 characters is ~7.5k tokens
+  prompt: "" # Optional. Replaces the built-in prompt; must contain {transcript}.
+
+paths:
+  input_dir: data/input
+  output_dir: data/output
