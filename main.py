@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src import config as cfg
-from src import summarize, transcribe
+from src import fetch, summarize, transcribe
 
 # Rough VRAM needs for faster-whisper at float16 and the default batch_size, keyed by the family a model name starts with.
 MODEL_VRAM_GIB = {"tiny": 1, "base": 1, "small": 2, "medium": 3, "turbo": 3, "large": 5}
@@ -58,12 +58,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         prog="briefly",
         description="Transcribe an audio/video file and summarize it.",
     )
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument(
         "-f",
         "--file",
-        required=True,
         metavar="INPUT_FILE",
         help="audio/video file placed in ./data/input. A bare name is looked up.",
+    )
+    source.add_argument(
+        "-u",
+        "--url",
+        metavar="URL",
+        help="link to download the audio from — YouTube, most other video sites, "
+        "or a direct link to a media file.",
     )
     parser.add_argument("--config", default=cfg.CONFIG_FILE, help="path to config.yaml")
     parser.add_argument("--transcribe-only", action="store_true", help="skip the summary")
@@ -71,13 +78,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def resolve_input(source: str, input_dir: Path) -> Path:
-    """Turn the --file value into a local file, rejecting URLs for now."""
-    if source.startswith(("http://", "https://")):
-        raise NotImplementedError(
-            f"downloading is not implemented yet: {source}. "
-            f"Download the file yourself and put it in {input_dir}."
-        )
+def resolve_input(source: str, input_dir: Path, config: cfg.FetchConfig | None = None) -> Path:
+    """Turn the --file or --url value into a local file, downloading if it is a link."""
+    if fetch.is_url(source):
+        return fetch.run(source, input_dir, config or cfg.FetchConfig())
 
     path = Path(source)
     if not path.exists():
@@ -129,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
 
         output_dir = Path(config.paths.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        path = resolve_input(args.file, Path(config.paths.input_dir))
+        path = resolve_input(args.url or args.file, Path(config.paths.input_dir), config.fetch)
         print(f"Input file parsed successfully: {path} ({path.stat().st_size / 1024**2:.1f} MiB)")
 
     except (OSError, RuntimeError, TypeError, ValueError, NotImplementedError) as exc:

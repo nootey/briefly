@@ -9,6 +9,9 @@ dependencies = [
     "openai>=1.0.0",
     "python-dotenv>=1.0.0",
     "pyyaml>=6.0",
+    # Pure Python and small, so it is not worth an extra. Keep it current: sites
+    # change how they serve video and yt-dlp chases them, so an old pin stops working.
+    "yt-dlp>=2025.1.15",
 ]
 
 # Everything except GPU transcription works without torch, and the CUDA build is a

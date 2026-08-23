@@ -28,6 +28,15 @@ summarize:
   chunk_chars: 30000 # Transcripts longer than this are summarized in chunks, then merged.  Groq's on-demand tier allows 12k tokens/min, and 30000 characters is ~7.5k tokens
   prompt: "" # Optional. Replaces the built-in prompt; must contain {transcript}.
 
+# --url runs the link through yt-dlp, which handles YouTube and most other video
+# sites, and drops the audio in paths.input_dir.
+fetch:
+  format: bestaudio/best # A yt-dlp format selector. bestaudio/best falls back to video when a site has no audio-only stream.
+  filename_template: "%(title).80s-%(id)s.%(ext)s" # yt-dlp output template. ".80s" caps the title length; the name carries into the output run directory.
+  noplaylist: true # Take just the video from a "watch?v=...&list=..." link instead of the whole playlist.
+  cookies_file: "" # Path to a Netscape cookies.txt. YouTube asks some networks to prove they are not a bot; this is the answer.
+  timeout_seconds: 60 # Per-socket, not for the whole download.
+
 paths:
   input_dir: data/input
   output_dir: data/output

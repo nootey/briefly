@@ -43,6 +43,15 @@ class SummarizeConfig:
 
 
 @dataclass
+class FetchConfig:
+    format: str = "bestaudio/best"
+    filename_template: str = "%(title).80s-%(id)s.%(ext)s"
+    noplaylist: bool = True
+    cookies_file: str = ""
+    timeout_seconds: float = 60
+
+
+@dataclass
 class PathsConfig:
     input_dir: str = "data/input"
     output_dir: str = "data/output"
@@ -52,6 +61,7 @@ class PathsConfig:
 class Config:
     transcribe: TranscribeConfig = field(default_factory=TranscribeConfig)
     summarize: SummarizeConfig = field(default_factory=SummarizeConfig)
+    fetch: FetchConfig = field(default_factory=FetchConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
 
     @property

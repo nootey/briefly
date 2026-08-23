@@ -3,21 +3,34 @@ from pathlib import Path
 import pytest
 
 import main
-from src import summarize, transcribe
-from src.config import Config
+from src import fetch, summarize, transcribe
+from src.config import Config, FetchConfig
 
 
-def test_parse_args_requires_a_file():
+def test_parse_args_requires_a_file_or_a_url():
     with pytest.raises(SystemExit):
         main.parse_args([])
+
+
+def test_parse_args_refuses_both_a_file_and_a_url():
+    with pytest.raises(SystemExit):
+        main.parse_args(["-f", "clip.mp3", "-u", "https://youtu.be/abc"])
 
 
 def test_parse_args_defaults():
     args = main.parse_args(["-f", "clip.mp3"])
 
     assert args.file == "clip.mp3"
+    assert args.url is None
     assert args.config == "config.yaml"
     assert args.transcribe_only is False
+
+
+def test_parse_args_takes_a_url():
+    args = main.parse_args(["--url", "https://youtu.be/abc"])
+
+    assert args.url == "https://youtu.be/abc"
+    assert args.file is None
 
 
 def test_parse_args_flags():
@@ -60,9 +73,30 @@ def test_resolve_input_reports_a_missing_file(tmp_path):
         main.resolve_input("clip.mp3", tmp_path)
 
 
-def test_resolve_input_rejects_urls(tmp_path):
-    with pytest.raises(NotImplementedError, match="not implemented"):
-        main.resolve_input("https://example.com/clip.mp3", tmp_path)
+def test_resolve_input_downloads_a_url(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_fetch(url, dest_dir, config):
+        seen.update(url=url, dest_dir=dest_dir, config=config)
+        return dest_dir / "downloaded.webm"
+
+    monkeypatch.setattr(fetch, "run", fake_fetch)
+    config = FetchConfig(format="worstaudio")
+
+    path = main.resolve_input("https://youtu.be/abc", tmp_path, config)
+
+    assert path == tmp_path / "downloaded.webm"
+    assert seen == {"url": "https://youtu.be/abc", "dest_dir": tmp_path, "config": config}
+
+
+def test_resolve_input_surfaces_a_failed_download(tmp_path, monkeypatch):
+    def boom(url, dest_dir, config):
+        raise fetch.FetchError("video unavailable")
+
+    monkeypatch.setattr(fetch, "run", boom)
+
+    with pytest.raises(fetch.FetchError, match="video unavailable"):
+        main.resolve_input("https://youtu.be/gone", tmp_path)
 
 
 @pytest.fixture
@@ -127,6 +161,34 @@ def test_main_reports_a_missing_input_file(tmp_path, capsys, monkeypatch):
 
     assert main.main(["-f", "nope.mp3"]) == 1
     assert "no such file" in capsys.readouterr().err
+
+
+def test_main_reports_a_failed_download(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main, "check_system_requirements", lambda config: None)
+    monkeypatch.setattr(fetch, "run", lambda *a: (_ for _ in ()).throw(fetch.FetchError("gone")))
+
+    assert main.main(["-u", "https://youtu.be/gone"]) == 1
+    assert "gone" in capsys.readouterr().err
+
+
+def test_main_succeeds_from_a_url(tmp_path, monkeypatch, pipeline):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main, "check_system_requirements", lambda config: None)
+
+    def fake_fetch(url, dest_dir, config):
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        clip = dest_dir / "A Talk-abc123.webm"
+        clip.touch()
+        return clip
+
+    monkeypatch.setattr(fetch, "run", fake_fetch)
+
+    assert main.main(["-u", "https://youtu.be/abc123"]) == 0
+
+    run_dir = next(Path("data/output").iterdir())
+    assert run_dir.name.startswith("A Talk-abc123_")
+    assert (run_dir / "summary.md").exists()
 
 
 def test_main_reports_a_broken_config(tmp_path, capsys):
