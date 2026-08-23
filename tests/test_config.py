@@ -135,3 +135,31 @@ def test_api_keys_come_from_the_environment(tmp_path, monkeypatch):
     assert config.openai_api_key == "sk-test"
     # An empty variable is treated as unset, not as an empty key.
     assert config.summary_api_key is None
+
+
+def test_fetch_defaults_and_overrides(tmp_path):
+    assert cfg.load(tmp_path / "nowhere.yaml").fetch.format == "bestaudio/best"
+
+    path = write(
+        tmp_path,
+        """
+        fetch:
+          format: worstaudio
+          noplaylist: false
+          cookies_file: ~/cookies.txt
+        """,
+    )
+
+    config = cfg.load(path)
+    assert config.fetch.format == "worstaudio"
+    assert config.fetch.noplaylist is False
+    assert config.fetch.cookies_file == "~/cookies.txt"
+    # Untouched keys keep their defaults.
+    assert config.fetch.timeout_seconds == 60
+
+
+def test_fetch_rejects_an_unknown_key(tmp_path):
+    path = write(tmp_path, "fetch:\n  audio_format: mp3\n")
+
+    with pytest.raises(ValueError, match="unknown key"):
+        cfg.load(path)
