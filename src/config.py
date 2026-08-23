@@ -36,7 +36,7 @@ class TranscribeConfig:
 @dataclass
 class SummarizeConfig:
     base_url: str = "https://api.groq.com/openai/v1"
-    model: str = "llama-3.3-70b-versatile"
+    model: str = "openai/gpt-oss-120b"
     temperature: float = 0.2
     chunk_chars: int = 30000
     prompt: str = ""

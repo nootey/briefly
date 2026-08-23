@@ -23,7 +23,7 @@ transcribe:
 #   ollama     http://localhost:11434/v1   (no key needed)
 summarize:
   base_url: "https://api.groq.com/openai/v1"
-  model: "llama-3.3-70b-versatile"
+  model: "openai/gpt-oss-120b"
   temperature: 0.2
   chunk_chars: 30000 # Transcripts longer than this are summarized in chunks, then merged.  Groq's on-demand tier allows 12k tokens/min, and 30000 characters is ~7.5k tokens
   prompt: "" # Optional. Replaces the built-in prompt; must contain {transcript}.
