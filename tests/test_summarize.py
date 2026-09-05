@@ -48,6 +48,55 @@ def test_long_transcript_is_chunked_merged_and_distilled(config, prompts):
     assert result == f"{merge}\n\n{concepts}"
 
 
+def test_short_transcript_below_topic_threshold_uses_plain_summary(config, prompts):
+    config.topics_min_chars = 1000
+    summarize.run("a short transcript", config, "key")
+
+    assert summarize.DETAILED_PROMPT[:40] not in prompts[0]
+    assert summarize.SUMMARY_PROMPT[:40] in prompts[0]
+
+
+def test_transcript_over_topic_threshold_in_one_chunk_uses_detailed_prompt(config, prompts):
+    config.chunk_chars = 10_000
+    config.topics_min_chars = 10
+
+    result = summarize.run("a transcript long enough to trip the threshold", config, "key")
+
+    assert len(prompts) == 1
+    assert summarize.DETAILED_PROMPT[:40] in prompts[0]
+    assert result == "reply 1"
+
+
+def test_long_transcript_over_topic_threshold_gets_topic_breakdown(config, prompts):
+    config.topics_min_chars = 10
+    transcript = "\n".join(f"paragraph {i} " * 3 for i in range(40))
+
+    result = summarize.run(transcript, config, "key")
+
+    # n chunk calls (using the chunk-detailed prompt), then overview merge, topics
+    # merge, then concepts.
+    assert len(prompts) > 4
+    chunk_prompts, rest = prompts[:-3], prompts[-3:]
+    assert all(summarize.CHUNK_DETAILED_PROMPT[:40] in p for p in chunk_prompts)
+    assert summarize.OVERVIEW_MERGE_PROMPT[:40] in rest[0]
+    assert summarize.TOPICS_MERGE_PROMPT[:40] in rest[1]
+    assert summarize.CONCEPTS_PROMPT[:40] in rest[2]
+
+    overview, topics, concepts = (f"reply {len(prompts) - 2}", f"reply {len(prompts) - 1}",
+                                   f"reply {len(prompts)}")
+    assert overview in rest[2]  # concepts pass sees the merged overview as "summary"
+    assert result == f"{overview}\n\n{topics}\n\n{concepts}"
+
+
+def test_custom_prompt_skips_topic_detection_even_over_threshold(config, prompts):
+    config.topics_min_chars = 1
+    config.prompt = "TL;DR of {transcript}"
+
+    summarize.run("hello", config, None)
+
+    assert prompts[0] == "TL;DR of hello"
+
+
 def test_custom_prompt_replaces_the_builtin(config, prompts):
     config.prompt = "TL;DR of {transcript}"
 

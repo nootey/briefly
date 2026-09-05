@@ -16,6 +16,78 @@ Transcript:
 {transcript}
 """
 
+DETAILED_PROMPT = """\
+This is long-form content — a podcast, interview, lecture, or similar — covering \
+multiple topics, so summarize it thoroughly instead of compressing everything into a \
+short overview.
+
+Write 150-300 words of markdown under a `## Overview` heading. Cover the format, the \
+speakers, and the overall arc. Stay factual — do not invent details that are not in the \
+transcript.
+
+Then scan the transcript for the distinct topics or segments it moves through. Under a \
+`## Topics` heading, add one `### <topic title>` subheading per topic, in the order they \
+come up, each followed by a paragraph of 3-6 sentences covering what was actually said. \
+Use as many topics as the transcript supports — do not force a fixed count.
+
+Then, under a `## Key Concepts` heading, list up to 5 of the ideas the transcript leans \
+on most, one per line as `- **Term** — one sentence on what it means here`. Fewer than \
+five is fine when the transcript does not support five.
+
+Output only those three sections.
+
+Transcript:
+{transcript}
+"""
+
+CHUNK_DETAILED_PROMPT = """\
+The transcript below is one part of a longer piece of long-form content — a podcast, \
+interview, lecture, or similar covering multiple topics.
+
+Write 100-200 words of markdown under a `## Overview` heading summarizing this part. \
+Stay factual — do not invent details that are not in the transcript.
+
+Then scan this part for the distinct topics it covers. Under a `## Topics` heading, add \
+one `### <topic title>` subheading per topic, each followed by a paragraph of 2-4 \
+sentences covering what was actually said. Use as many topics as this part supports.
+
+Output only those two sections.
+
+Transcript part:
+{transcript}
+"""
+
+OVERVIEW_MERGE_PROMPT = """\
+The partial overviews below each describe one consecutive part of one long, long-form \
+transcript (a podcast, interview, lecture, or similar).
+
+Merge them into a single coherent `## Overview` covering the whole recording — the \
+format, the speakers, and the overall arc — dropping repetition while keeping every \
+distinct point made across the parts.
+
+Output only that section.
+
+Partial overviews:
+{transcript}
+"""
+
+TOPICS_MERGE_PROMPT = """\
+The notes below cover consecutive parts of one long, long-form transcript. Each part's \
+notes include a `## Topics` section listing the distinct topics discussed in that part, \
+with a paragraph on each.
+
+Consolidate all of them into a single `## Topics` heading. Add one `### <topic title>` \
+subheading per distinct topic, ordered by where it first comes up, each followed by a \
+paragraph that combines everything said about it across every part where it appears. \
+Merge topics that are the same idea even if the parts titled them differently; keep \
+topics that are genuinely distinct separate, even if they only appear in one part.
+
+Output only that section.
+
+Notes on each part:
+{transcript}
+"""
+
 MERGE_PROMPT = """\
 The partial summaries below describe consecutive parts of one long transcript.
 
@@ -51,20 +123,38 @@ Notes on each part:
 
 def run(transcript: str, config: SummarizeConfig, api_key: str | None = None) -> str:
     chunks = _chunk(transcript, config.chunk_chars)
-    template = config.prompt or SUMMARY_PROMPT
-    if "{transcript}" not in template:
-        raise ValueError("summarize.prompt must contain the {transcript} placeholder")
+
+    if config.prompt:
+        template, detailed = config.prompt, False
+        if "{transcript}" not in template:
+            raise ValueError("summarize.prompt must contain the {transcript} placeholder")
+    else:
+        detailed = len(transcript) >= config.topics_min_chars
+        template = DETAILED_PROMPT if detailed else SUMMARY_PROMPT
 
     if len(chunks) == 1:
         return _complete(template.format(transcript=chunks[0]), config, api_key)
 
     print(f"  transcript split into {len(chunks)} chunks")
+    chunk_template = CHUNK_DETAILED_PROMPT if detailed else template
     partials = []
     for i, chunk in enumerate(chunks, start=1):
         print(f"  summarizing chunk {i}/{len(chunks)}")
-        partials.append(_complete(template.format(transcript=chunk), config, api_key))
+        partials.append(_complete(chunk_template.format(transcript=chunk), config, api_key))
 
     notes = "\n\n".join(partials)
+
+    if detailed:
+        print("  merging overviews")
+        overview = _complete(OVERVIEW_MERGE_PROMPT.format(transcript=notes), config, api_key)
+        print("  consolidating topics")
+        topics = _complete(TOPICS_MERGE_PROMPT.format(transcript=notes), config, api_key)
+        print("  extracting key concepts")
+        concepts = _complete(
+            CONCEPTS_PROMPT.format(summary=overview, transcript=notes), config, api_key
+        )
+        return f"{overview}\n\n{topics}\n\n{concepts}"
+
     print("  merging partial summaries")
     summary = _complete(MERGE_PROMPT.format(transcript=notes), config, api_key)
 

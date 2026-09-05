@@ -26,7 +26,8 @@ summarize:
   model: "openai/gpt-oss-120b"
   temperature: 0.2
   chunk_chars: 30000 # Transcripts longer than this are summarized in chunks, then merged.  Groq's on-demand tier allows 12k tokens/min, and 30000 characters is ~7.5k tokens
-  prompt: "" # Optional. Replaces the built-in prompt; must contain {transcript}.
+  topics_min_chars: 20000 # Transcripts at or above this length (roughly 20-25 minutes of speech, e.g. a podcast or lecture) get a topic-by-topic breakdown instead of one short summary. Ignored when `prompt` is set.
+  prompt: "" # Optional. Replaces the built-in prompt (and the topic breakdown above); must contain {transcript}.
 
 # --url runs the link through yt-dlp, which handles YouTube and most other video
 # sites, and drops the audio in paths.input_dir.
