@@ -39,6 +39,7 @@ class SummarizeConfig:
     model: str = "openai/gpt-oss-120b"
     temperature: float = 0.2
     chunk_chars: int = 30000
+    topics_min_chars: int = 20000
     prompt: str = ""
 
 
